@@ -6,13 +6,13 @@ This script is designed to monitor changes in a Cisco APIC using websockets. It 
 ## Features
 - Real-time monitoring: The script provides real-time updates on changes from the APIC environment through WebSocket Subscription.
 - Short-time Object Buffering: Objects are buffered (1 second) during state transitions to ensure accuracy.
-- Because of configuration changes of an object, the APIC implicitly creates/modifies/deletes other objects related to the configured object behind the scenes. Those objects are updated via the Subscription as well. The script provides a filtering mode (`filter_mode` in the configuration) that reduces the "noise" classes:
+- Because of configuration changes of an object, the APIC implicitly creates/modifies/deletes other objects related to the configured object behind the scenes. Those objects are updated via the Subscription as well. Because of that, the script provides a filtering mode (`filter_mode` in the configuration) that reduces those "noise" objects:
   - `auto` (default): Auto filter out config changes without description from audit log.
   - `whitelist`: Logs only config changes from classes specified in `whitelisted_classes` list.
   - `blacklist`: Ignores config changes from classes specified in `blacklisted_classes` list.
   - `verbose`: Logs all config changes without any filtering.
 - Logging: Changes and relevant details are written to `apic-subscription.log`, providing a consistent record of updates.
-  - Detailed Logging Format: Each log entry provides comprehensive details including the Object's Distinguished Name (DN), Object attributes, Description of the change, the Change Set that encompasses all modifications, and the User who made the change.
+  - Detailed Logging Format: Each log entry provides comprehensive details, including the Object's Distinguished Name (**"dn"**), **Object attributes**, **Description** of the change, the **Change Set** that encompasses all modifications, and the **User** who made the change.
 ```
 [Timestamp] [INFO] Created/Modified/Deleted - "dn":"Object's DN"
                                               "Object Attributes in JSON format"
