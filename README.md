@@ -6,6 +6,8 @@ This script is designed to monitor changes in a Cisco APIC using websockets. It 
 ## Features
 - Real-time monitoring: The script provides real-time updates on changes from the APIC environment through WebSocket Subscription.
 - Short-time Object Buffering: Objects are buffered (1 second) during state transitions to ensure accuracy.
+- Get Audit Logs from Objects: After receiving the notification about the updated object, the script sends a get request for the audit log of that specific object and consolidates logs within a second to streamline the logging message.
+  - The script waits two seconds before sending the get request, so the APIC has time to populate the audit logs.
 - Because of configuration changes of an object, the APIC implicitly creates/modifies/deletes other objects related to the configured object behind the scenes. Those objects are updated via the Subscription as well. Because of that, the script provides a filtering mode (`filter_mode` in the configuration) that reduces those "noise" objects:
   - `auto` (default): Auto filter out config changes without description from audit log.
   - `whitelist`: Logs only config changes from classes specified in `whitelisted_classes` list.
