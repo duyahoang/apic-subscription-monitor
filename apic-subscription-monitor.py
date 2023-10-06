@@ -30,8 +30,8 @@ async def load_config(filename):
     if 'password' not in config:
         config['password'] = getpass.getpass(prompt="Enter the password: ")
     
-    # Setting the default filter mode to 'whitelist' if not provided in the config.
-    config['filter_mode'] = config.get('filter_mode', 'whitelist')
+    # Setting the default filter mode to 'auto' if not provided in the config.
+    config['filter_mode'] = config.get('filter_mode', 'auto')
 
     return config
 
@@ -44,7 +44,8 @@ async def get_auth_cookie(username, password, base_url):
     url = f"{base_url}/api/aaaLogin.json"
 
     # Using aiohttp to send an asynchronous HTTP POST request to obtain authentication cookie.
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=20) # 20 seconds timeout for the entire connection process
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(url, json=payload, verify_ssl=False) as login_response:
             # Parsing the response to extract the token and construct the cookie.
             response_dict = await login_response.json()
@@ -125,10 +126,9 @@ async def get_audit_log(base_url, cookie, dn, status):
     change_sets = []
     descriptions = []
     users = []
-    
+    await asyncio.sleep(2)  # Delay 2 second for aaaModLR audit-log populated before processing
     # Constructing the URL to get the audit log for a specific DN.
     if status == "deleted":
-        await asyncio.sleep(1)  # Delay 1 second for aaaModLR audit-log populated before processing
         url = f"{base_url}/api/node/class/aaaModLR.json?query-target-filter=eq(aaaModLR.affected,\"{dn}\")&order-by=aaaModLR.created|desc&page=0&page-size=1"
     else:
         url = f"{base_url}/api/node/mo/{dn}.json?rsp-subtree-include=audit-logs,no-scoped,subtree&order-by=aaaModLR.created|desc&page=0&page-size=15"
@@ -205,7 +205,9 @@ async def print_mo_updates(ws, base_url, cookie, filter_mode, classes):
                 log_lines.append(f"{padding}{' ' * len('User: ')}{user}")
 
         log_message = '\n'.join(log_lines)
-        logging.info(log_message)
+
+        if filter_mode != "auto" or (filter_mode == "auto" and descriptions):
+            logging.info(log_message)
     
     while True:
         try:
@@ -262,7 +264,7 @@ async def main(config):
     # Subscribing to the queries and storing the subscription IDs.
     query_to_subid = await subscribe_to_queries(base_url, cookie, config['queries'])
 
-    filter_mode = config.get("filter_mode", "whitelist")
+    filter_mode = config.get("filter_mode")
     if filter_mode == "whitelist":
         classes = config.get("whitelisted_classes", [])
     elif filter_mode == "blacklist":

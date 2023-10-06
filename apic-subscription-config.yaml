@@ -1,0 +1,16 @@
+---
+username: "admin"
+password: "cisc0!123"
+apic: "192.168.1.10"
+queries:
+  - api_ep: "/api/class/fvTenant"
+    filters: "&query-target=subtree"
+  - api_ep: "/api/class/infraInfra"
+    filters: "&query-target=subtree"
+filter_mode: auto #Choices: whitelist, blacklist, verbose, auto - Default is auto
+whitelisted_classes:
+  - "exampleClass1"
+  - "exampleClass2"
+blacklisted_classes:
+  - "exampleClass1"
+  - "exampleClass2"
