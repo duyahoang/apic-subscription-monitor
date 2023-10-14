@@ -47,14 +47,14 @@ async def get_auth_cookie(username, password, base_url):
     timeout = aiohttp.ClientTimeout(total=20) # 20 seconds timeout for the entire connection process
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(url, json=payload, verify_ssl=False) as login_response:
+            if login_response.status != 200:
+                logging.warning(f"Failed to Get APIC Token - Response Message: {await login_response.text()}")
             # Parsing the response to extract the token and construct the cookie.
             response_dict = await login_response.json()
             token = response_dict["imdata"][0]["aaaLogin"]["attributes"]["token"]
             refresh_timeout = int(response_dict["imdata"][0]["aaaLogin"]["attributes"]["refreshTimeoutSeconds"])
             cookie = {"APIC-cookie": token}
             # logging.info(f"Get APIC Token - Status Code: {login_response.status}")
-            if login_response.status != 200:
-                logging.warning(f"Failed to Get APIC Token - Response Message: {await login_response.text()}")
     return cookie, refresh_timeout
 
 
