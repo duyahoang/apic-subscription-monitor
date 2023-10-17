@@ -1,3 +1,4 @@
+# flake8: noqa E501
 import asyncio
 import aiohttp
 import logging
@@ -14,29 +15,30 @@ from datetime import datetime
 
 # Setting up basic logging configuration.
 logging.basicConfig(
-    filename='apic-subscription.log',
+    filename="apic-subscription.log",
     level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] %(message)s',  # Format for the log messages.
-    datefmt='%Y-%m-%d %H:%M:%S'  # Format for the date in log messages.
+    format="[%(asctime)s] [%(levelname)s] %(message)s",  # Format for the log messages.
+    datefmt="%Y-%m-%d %H:%M:%S",  # Format for the date in log messages.
 )
 
 
 async def load_config(filename):
     # Loading the configuration from a YAML file.
-    with open(filename, 'r') as file:
+    with open(filename, "r") as file:
         config = yaml.safe_load(file)
 
     # If the password is not in the configuration, prompt the user to enter it.
-    if 'password' not in config:
-        config['password'] = getpass.getpass(prompt="Enter the password: ")
-    
+    if "password" not in config:
+        config["password"] = getpass.getpass(prompt="Enter the password: ")
+
     # Setting the default filter mode to 'auto' if not provided in the config.
-    config['filter_mode'] = config.get('filter_mode', 'auto')
+    config["filter_mode"] = config.get("filter_mode", "auto")
 
     return config
 
 
 # --- APIC Authentication and Connection ---
+
 
 async def get_auth_cookie(username, password, base_url):
     # Create the payload for the authentication request.
@@ -44,15 +46,23 @@ async def get_auth_cookie(username, password, base_url):
     url = f"{base_url}/api/aaaLogin.json"
 
     # Using aiohttp to send an asynchronous HTTP POST request to obtain authentication cookie.
-    timeout = aiohttp.ClientTimeout(total=20) # 20 seconds timeout for the entire connection process
+    timeout = aiohttp.ClientTimeout(
+        total=20
+    )  # 20 seconds timeout for the entire connection process
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(url, json=payload, verify_ssl=False) as login_response:
             if login_response.status != 200:
-                logging.warning(f"Failed to Get APIC Token - Response Message: {await login_response.text()}")
+                logging.warning(
+                    f"Failed to Get APIC Token - Response Message: {await login_response.text()}"
+                )
             # Parsing the response to extract the token and construct the cookie.
             response_dict = await login_response.json()
             token = response_dict["imdata"][0]["aaaLogin"]["attributes"]["token"]
-            refresh_timeout = int(response_dict["imdata"][0]["aaaLogin"]["attributes"]["refreshTimeoutSeconds"])
+            refresh_timeout = int(
+                response_dict["imdata"][0]["aaaLogin"]["attributes"][
+                    "refreshTimeoutSeconds"
+                ]
+            )
             cookie = {"APIC-cookie": token}
             # logging.info(f"Get APIC Token - Status Code: {login_response.status}")
     return cookie, refresh_timeout
@@ -61,7 +71,9 @@ async def get_auth_cookie(username, password, base_url):
 async def refresh_cookie(username, password, base_url, cookie, refresh_timeout):
     await asyncio.sleep(refresh_timeout - 60)
     while True:
-        new_cookie, refresh_timeout = await get_auth_cookie(username, password, base_url)
+        new_cookie, refresh_timeout = await get_auth_cookie(
+            username, password, base_url
+        )
         cookie.clear()
         cookie.update(new_cookie)
         await asyncio.sleep(refresh_timeout - 60)
@@ -71,7 +83,7 @@ async def open_web_socket(apic, cookie):
     # Creating a websocket URL using the provided APIC and cookie.
     token = cookie.get("APIC-cookie")
     websocket_url = f"wss://{apic}/socket{token}"
-    
+
     # Create a context with a specified protocol and set verify_mode to CERT_NONE.
     context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
@@ -84,25 +96,30 @@ async def open_web_socket(apic, cookie):
 
 # --- WebSockets: Subscription & Message Processing ---
 
+
 async def fetch_with_session(session, url, **kwargs):
     async with session.get(url, **kwargs) as response:
         return await response.json()
-    
+
 
 async def subscribe_to_queries(base_url, cookie, queries):
     # Initializing an empty dictionary to store the subscription IDs.
     query_to_subid = {}
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+    async with aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(ssl=False)
+    ) as session:
         for query in queries:
             url = f"{base_url}{query['api_ep']}.json?subscription=yes{query.get('filters', '')}"
             # Sending a GET request to subscribe to the queries and storing the subscription IDs.
             response_dict = await fetch_with_session(session, url, cookies=cookie)
-            if 'subscriptionId' in response_dict:
+            if "subscriptionId" in response_dict:
                 subid = response_dict["subscriptionId"]
                 query_to_subid[query["api_ep"]] = subid
                 logging.info(f"{url} - Subscription ID: {subid}")
             else:
-                logging.warning(f"Failed to Subscribe {query} - Response: {response_dict}")
+                logging.warning(
+                    f"Failed to Subscribe {query} - Response: {response_dict}"
+                )
     return query_to_subid
 
 
@@ -115,28 +132,36 @@ async def refresh_ws_subscriptions(base_url, cookie, query_to_subid):
 
             # Sending a GET request to refresh the subscriptions.
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, cookies=cookie, verify_ssl=False) as refresh_resp:
+                async with session.get(
+                    url, cookies=cookie, verify_ssl=False
+                ) as refresh_resp:
                     # Logging the status of the refresh response.
                     # logging.info(f"Refresh response for subscription ID {subid} - Status Code: {refresh_resp.status}")
                     if refresh_resp.status != 200:
-                        logging.warning(f"Failed to refresh subscription ID {subid} - Response Message: {await refresh_resp.text()}")
+                        logging.warning(
+                            f"Failed to refresh subscription ID {subid} - Response Message: {await refresh_resp.text()}"
+                        )
 
 
 async def get_audit_log(base_url, cookie, dn, status):
     change_sets = []
     descriptions = []
     users = []
-    await asyncio.sleep(2)  # Delay 2 second for aaaModLR audit-log populated before processing
+    await asyncio.sleep(
+        2
+    )  # Delay 2 second for aaaModLR audit-log populated before processing
     # Constructing the URL to get the audit log for a specific DN.
     if status == "deleted":
-        url = f"{base_url}/api/node/class/aaaModLR.json?query-target-filter=eq(aaaModLR.affected,\"{dn}\")&order-by=aaaModLR.created|desc&page=0&page-size=1"
+        url = f'{base_url}/api/node/class/aaaModLR.json?query-target-filter=eq(aaaModLR.affected,"{dn}")&order-by=aaaModLR.created|desc&page=0&page-size=1'
     else:
         url = f"{base_url}/api/node/mo/{dn}.json?rsp-subtree-include=audit-logs,no-scoped,subtree&order-by=aaaModLR.created|desc&page=0&page-size=15"
-    
+
     # Sending a GET request to get the audit log.
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, cookies=cookie, verify_ssl=False) as audit_log_response:
+            async with session.get(
+                url, cookies=cookie, verify_ssl=False
+            ) as audit_log_response:
                 if audit_log_response.status == 200:
                     # Processing the audit log
                     audit_logs = await audit_log_response.json()
@@ -145,13 +170,18 @@ async def get_audit_log(base_url, cookie, dn, status):
                     prev_timestamp = None
                     for log in audit_logs["imdata"]:
                         timestamp_str = log["aaaModLR"]["attributes"]["created"]
-                        timestamp = datetime.strptime(timestamp_str, '%Y-%m-%dT%H:%M:%S.%f%z')
+                        timestamp = datetime.strptime(
+                            timestamp_str, "%Y-%m-%dT%H:%M:%S.%f%z"
+                        )
 
-                        if prev_timestamp and abs((timestamp - prev_timestamp).total_seconds()) > 1:
+                        if (
+                            prev_timestamp
+                            and abs((timestamp - prev_timestamp).total_seconds()) > 1
+                        ):
                             break
-                        
+
                         prev_timestamp = timestamp
-                        
+
                         description = log["aaaModLR"]["attributes"].get("descr", "")
                         change_set = log["aaaModLR"]["attributes"].get("changeSet", "")
                         user = log["aaaModLR"]["attributes"].get("user", "")
@@ -161,9 +191,11 @@ async def get_audit_log(base_url, cookie, dn, status):
                         if change_set and change_set not in change_sets:
                             change_sets.append(change_set)
                         if user and user not in users:
-                            users.append(user) 
+                            users.append(user)
                 else:
-                    logging.warning(f"Failed to get audit log for {dn} - Status Code: {audit_log_response.status} - Response Message: {await audit_log_response.text()}")
+                    logging.warning(
+                        f"Failed to get audit log for {dn} - Status Code: {audit_log_response.status} - Response Message: {await audit_log_response.text()}"
+                    )
     except Exception as e:
         logging.error(f"Process Audit Log Error: {e}")
     return change_sets, descriptions, users
@@ -176,19 +208,20 @@ async def print_mo_updates(ws, base_url, cookie, filter_mode, classes):
 
     async def process_update(dn):
         await asyncio.sleep(1)  # Buffer update for 1 second before processing
-        final_update = recent_updates.pop(dn)  # Fetch and remove the update from the cache
+        final_update = recent_updates.pop(
+            dn
+        )  # Fetch and remove the update from the cache
         scheduled_updates.remove(dn)  # Remove dn from the set of scheduled updates
 
-        status = next(iter(final_update.values())).get('attributes').get('status', '')
-        change_sets, descriptions, users = await get_audit_log(base_url, cookie, dn, status)
+        status = next(iter(final_update.values())).get("attributes").get("status", "")
+        change_sets, descriptions, users = await get_audit_log(
+            base_url, cookie, dn, status
+        )
         # Format the log message.
-        padding = ' ' * (len(status) + 3 + 27)
-        
-        log_lines = [
-            f"{status.capitalize()} - \"dn\":\"{dn}\"",
-            f"{padding}{final_update}"
-        ]
-        
+        padding = " " * (len(status) + 3 + 27)
+
+        log_lines = [f'{status.capitalize()} - "dn":"{dn}"', f"{padding}{final_update}"]
+
         if descriptions:
             log_lines.append(f"{padding}Description: {descriptions[0]}")
             for desc in descriptions[1:]:
@@ -204,16 +237,16 @@ async def print_mo_updates(ws, base_url, cookie, filter_mode, classes):
             for user in users[1:]:
                 log_lines.append(f"{padding}{' ' * len('User: ')}{user}")
 
-        log_message = '\n'.join(log_lines)
+        log_message = "\n".join(log_lines)
 
         if filter_mode != "auto" or (filter_mode == "auto" and descriptions):
             logging.info(log_message)
-    
+
     while True:
         try:
             message = await ws.recv()
             message_data = json.loads(message)
-            for mo_data in message_data.get('imdata', []):
+            for mo_data in message_data.get("imdata", []):
                 # Extract the MO and its attributes.
                 mo_class, attributes = next(iter(mo_data.items()))
                 # Filtering based on mode
@@ -223,18 +256,22 @@ async def print_mo_updates(ws, base_url, cookie, filter_mode, classes):
                     continue
                 else:  # No filtering for verbose mode
                     pass
-                attributes = attributes.get('attributes', {})
+                attributes = attributes.get("attributes", {})
                 # Extract the 'dn' fields.
-                dn = attributes.get('dn')
+                dn = attributes.get("dn")
 
                 # Merge new update with any recently buffered one
                 if dn in recent_updates:
                     existing_data = recent_updates[dn]
-                    existing_attrs = next(iter(existing_data.values())).get('attributes')
+                    existing_attrs = next(iter(existing_data.values())).get(
+                        "attributes"
+                    )
                     attributes_to_merge = attributes.copy()
-                    attributes_to_merge.pop('status', None) # keep the status of the first update
-                    existing_attrs.update(attributes_to_merge) # add/update keys
-                    
+                    attributes_to_merge.pop(
+                        "status", None
+                    )  # keep the status of the first update
+                    existing_attrs.update(attributes_to_merge)  # add/update keys
+
                 else:
                     recent_updates[dn] = mo_data
 
@@ -243,7 +280,6 @@ async def print_mo_updates(ws, base_url, cookie, filter_mode, classes):
                     scheduled_updates.add(dn)
                     asyncio.create_task(process_update(dn))
 
-                
         except (websockets.ConnectionClosed, Exception) as e:
             logging.error(f"WebSocket Error: {e}")
             break
@@ -251,18 +287,21 @@ async def print_mo_updates(ws, base_url, cookie, filter_mode, classes):
 
 # --- Main & Signal Handling ---
 
+
 async def main(config):
     # Constructing the base URL.
     base_url = f"https://{config['apic']}"
 
     # Getting the authentication cookie.
-    cookie, refresh_timeout = await get_auth_cookie(config['username'], config['password'], base_url)
+    cookie, refresh_timeout = await get_auth_cookie(
+        config["username"], config["password"], base_url
+    )
 
     # Opening the websocket connection.
-    ws = await open_web_socket(config['apic'], cookie)
+    ws = await open_web_socket(config["apic"], cookie)
 
     # Subscribing to the queries and storing the subscription IDs.
-    query_to_subid = await subscribe_to_queries(base_url, cookie, config['queries'])
+    query_to_subid = await subscribe_to_queries(base_url, cookie, config["queries"])
 
     filter_mode = config.get("filter_mode")
     if filter_mode == "whitelist":
@@ -275,8 +314,11 @@ async def main(config):
     # Creating tasks for printing messages, refreshing subscriptions, and refresh aaa Token.
     asyncio.create_task(print_mo_updates(ws, base_url, cookie, filter_mode, classes))
     asyncio.create_task(refresh_ws_subscriptions(base_url, cookie, query_to_subid))
-    asyncio.create_task(refresh_cookie(config['username'], config['password'], base_url, cookie, refresh_timeout))
-
+    asyncio.create_task(
+        refresh_cookie(
+            config["username"], config["password"], base_url, cookie, refresh_timeout
+        )
+    )
 
     # Ensure the script run infinitely
     try:
@@ -288,10 +330,12 @@ async def main(config):
 
 
 if __name__ == "__main__":
-    print("Logs are being written to 'apic-subscription.log'. Please monitor this file for updates.")
+    print(
+        "Logs are being written to 'apic-subscription.log'. Please monitor this file for updates."
+    )
 
     # Loading configuration.
-    config = asyncio.run(load_config('apic-subscription-config.yaml'))
+    config = asyncio.run(load_config("apic-subscription-config.yaml"))
 
     # Handling signals to shutdown gracefully.
     async def sig_handler(sig):
